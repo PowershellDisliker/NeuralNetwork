@@ -56,11 +56,17 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
 
         NeuralNetwork_propogate(network, &request);
 
-        printf("Results: ");
+        if (NeuralNetwork_getLastError().type != SUCCESS) {
+            printf("Error calculating result");
+            return;
+        }
+
+        printf("Results:\n");
 
         for (int result = 0; result < request.outputBufferSize; ++result) {
-            printf("%f", outputs[result]);
+            printf("%f ", outputs[result]);
         }
+        printf("\n");
      }
     
     else if (strcmp(command, "train") == 0)

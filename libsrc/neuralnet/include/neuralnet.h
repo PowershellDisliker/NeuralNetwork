@@ -1,6 +1,7 @@
 #pragma once
 
 enum NeuralNetwork_Errors {
+    SUCCESS,
     INVALID_ARGUMENT,
 };
 
@@ -51,7 +52,7 @@ typedef union {
     NeuralNetwork_FileRequest* file;
 } NeuralNetwork_Request;
 
-NeuralNetwork_Error* NeuralNetwork_getLastError();
+NeuralNetwork_Error NeuralNetwork_getLastError();
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request);
 

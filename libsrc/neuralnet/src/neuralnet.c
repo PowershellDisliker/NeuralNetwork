@@ -3,7 +3,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-NeuralNetwork_Error lastError;
+NeuralNetwork_Error lastError = {SUCCESS, ""};
+
+NeuralNetwork_Error NeuralNetwork_getLastError() {
+    NeuralNetwork_Error errorCopy = {lastError.type, lastError.errorMessage};
+    
+    lastError.type = SUCCESS;
+    lastError.errorMessage = "";
+
+    return errorCopy;
+}
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request) {
     if (request->layerCount < 3) {
@@ -91,7 +100,7 @@ void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequ
     }
 
     // Propogate through the network
-    for (int layer = 0; layer < network->layerCount; ++layer) {
+    for (int layer = 1; layer < network->layerCount; ++layer) {
         for (int neuron = 0; neuron < network->layers[layer]->neuronCount; ++neuron) {
             const int start = network->layers[layer]->weightsPerNeuron * neuron;
             const int end = network->layers[layer]->weightsPerNeuron * (neuron + 1);
@@ -112,7 +121,7 @@ void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequ
 
     // Write output to output buffer
     for (int outputFeature = 0; outputFeature < network->layers[network->layerCount - 1]->neuronCount; ++outputFeature) {
-        request->output[outputFeature] = intermediateOutputBuffer[outputFeature];
+        request->output[outputFeature] = intermediateInputBuffer[outputFeature];
     }
 }
 
