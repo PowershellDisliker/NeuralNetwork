@@ -16,7 +16,7 @@ all: $(LIBS) $(EXEC_NAME)
 
 $(EXEC_NAME): $(SRC_DIR)cli.c
 	-mkdir -p $(BIN_DIR)
-	$(CC) $< -L$(LIB_DIR) $(LDFLAGS) -o $(BIN_DIR)$@
+	$(CC) $< -L$(LIB_DIR) $(LDFLAGS) -g -o $(BIN_DIR)$@ -lm
 
 $(LIBS):
 	$(MAKE) -C $(LIB_SRC_DIR)$@

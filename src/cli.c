@@ -7,28 +7,45 @@
 
 const int INPUT_BUFFER_SIZE = 1024;
 
+enum NeuralNetwork_ActivationFunctions getActivationEnumeration(char* word) {
+    if (word == NULL) return NONE;
+
+    if (strcasecmp(word, "relu") == 0)    return RELU;
+    if (strcasecmp(word, "sigmoid") == 0) return SIGMOID;
+    if (strcasecmp(word, "linear") == 0)  return LINEAR;
+    if (strcasecmp(word, "softmax") == 0) return SOFTMAX;
+
+    return NONE;
+}
+
 void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, char* words[], int wordCount) {
     char* command = words[0];
 
     if (strcmp(command, "create") == 0)
     {
-        if (wordCount < 3)
+        if (wordCount < 4)
         {
-            printf("Create usage: create <layer_count> [input_n_count, l1_n_count, l2_n_count, ..., lk_n_count]\n\n");
+            printf("Create usage: create <layer_count> [input_n_count l1_n_count l1_activation l2_n_count l2_activation ... lk_n_count lk_activation]\n\n");
             return;
         }
 
         int layers = atoi(words[1]);
         int neuronsPerLayer[layers];
+        enum NeuralNetwork_ActivationFunctions activations[layers];
 
-        for (int layer = 0; layer < layers; ++layer)
+        neuronsPerLayer[0] = atoi(words[2]);
+        activations[0] = NONE;
+
+        for (int layer = 1; layer < layers; ++layer)
         {
-            neuronsPerLayer[layer] = atoi(words[2 + layer]);
+            neuronsPerLayer[layer] = atoi(words[1 + (2 * layer)]);
+            activations[layer] = getActivationEnumeration(words[2 + (2 * layer)]);
         }
 
         NeuralNetwork_CreateRequest request;
         request.layerCount = layers;
         request.neuronsPerLayer = neuronsPerLayer;
+        request.activationFunctions = activations;
 
         NeuralNetwork_create(network, &request);
         printf("Created %d-layer network\n", network->layerCount);
@@ -36,7 +53,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
 
     else if (strcmp(command, "run") == 0)
     {
-        NeuralNetwork_PropogateRequest request;
+        NeuralNetwork_PropagateRequest request;
 
         request.inputCount = atoi(words[1]);
         request.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
@@ -54,7 +71,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
 
         request.inputs = inputs;
 
-        NeuralNetwork_propogate(network, &request);
+        NeuralNetwork_propagate(network, &request);
 
         if (NeuralNetwork_getLastError().type != SUCCESS) {
             printf("Error calculating result");

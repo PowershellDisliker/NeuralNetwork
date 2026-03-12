@@ -2,6 +2,7 @@
 #include <memory.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 NeuralNetwork_Error lastError = {SUCCESS, ""};
 
@@ -12,6 +13,30 @@ NeuralNetwork_Error NeuralNetwork_getLastError() {
     lastError.errorMessage = "";
 
     return errorCopy;
+}
+
+void applyActivationFunction(float* outputArray, int outputSize, enum NeuralNetwork_ActivationFunctions function) {
+    switch (function) {
+        case RELU: 
+            return NeuralNetwork_ReLU(outputArray, outputSize);
+        case SOFTMAX:
+            return NeuralNetwork_SoftMax(outputArray, outputSize);
+        case SIGMOID:
+            return NeuralNetwork_Sigmoid(outputArray, outputSize);
+        case LINEAR:
+            return NeuralNetwork_Linear(outputArray, outputSize);
+        default:
+            lastError.type = INVALID_ARGUMENT;
+            lastError.errorMessage = "Invalid output activation function";
+    }
+}
+
+char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
+    if (activation == RELU)    return "ReLU";
+    if (activation == SIGMOID) return "Sigmoid";
+    if (activation == LINEAR)  return "Linear";
+    if (activation == SOFTMAX) return "SoftMax";
+    else return "Error";
 }
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request) {
@@ -38,6 +63,7 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
         currentLayer->weightsPerNeuron = request->neuronsPerLayer[layer - 1];
         currentLayer->biases = malloc(sizeof(*currentLayer->biases) * currentLayer->neuronCount);
         currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+        currentLayer->outputActivationFunction = request->activationFunctions[layer];
 
         for (int i = 0; i < currentLayer->neuronCount; ++i) {
             currentLayer->biases[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
@@ -54,6 +80,8 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
 }
 
 void NeuralNetwork_destroy(NeuralNetwork* network) {
+    free(network->layers[0]);
+
     for (int layer = 1; layer < network->layerCount; ++layer) {
         free(network->layers[layer]->weights);
         free(network->layers[layer]->biases);
@@ -61,13 +89,16 @@ void NeuralNetwork_destroy(NeuralNetwork* network) {
     }
 
     free(network->layers);
+
+    network->layerCount = -1;
+    network->layers = NULL;
 }
 
 void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* request) {
     
 }
 
-void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequest* request) {
+void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {
     // Validate Request
     if (network->layers[network->layerCount - 1]->neuronCount < request->outputBufferSize) {
         lastError.type = INVALID_ARGUMENT;
@@ -114,6 +145,8 @@ void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequ
             interOutput[neuron] = innerProduct;
         }
 
+        applyActivationFunction(interOutput, network->layers[layer]->neuronCount, network->layers[layer]->outputActivationFunction);
+
         float *temp = interInput;
         interInput = interOutput;
         interOutput = temp;
@@ -134,12 +167,17 @@ void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
 }
 
 void NeuralNetwork_print(NeuralNetwork* network) {
+    if (network->layers == NULL) {
+        printf("Network is empty\n");
+        return;
+    }
+
     printf("Input Layer:\n");
     printf("%d Input Neurons\n\n", network->layers[0]->neuronCount);
 
     for (int layer = 1; layer < network->layerCount; ++layer) {
         printf("Layer %d:\n", layer);
-        printf("%d Neurons\n", network->layers[layer]->neuronCount);
+        printf("%d Neurons, %s Activation\n", network->layers[layer]->neuronCount, getActivationString(network->layers[layer]->outputActivationFunction));
 
         for (int neuron = 0; neuron < network->layers[layer]->neuronCount; ++neuron) {
             for (int weight = neuron * network->layers[layer]->weightsPerNeuron; weight < (neuron + 1) * network->layers[layer]->weightsPerNeuron; ++weight) {
@@ -148,5 +186,35 @@ void NeuralNetwork_print(NeuralNetwork* network) {
             printf("\n");
         }
         printf("\n");
+    }
+}
+
+void NeuralNetwork_ReLU(float* input, int N) {
+    for (int i = 0; i < N; ++i) {
+        input[i] = (input[i] < 0.0f) ? 0.0f : input[i];
+    }
+}
+
+void NeuralNetwork_Linear(float* input, int N) {
+    // Some of my best work.
+    return;
+}
+
+void NeuralNetwork_Sigmoid(float* input, int N) {
+    for (int i = 0; i < N; ++i) {
+        input[i] = 1.0f / (1.0f + expf(-input[i]));
+    }
+}
+
+void NeuralNetwork_SoftMax(float* vector, int N) {
+    float sum = 0.0f;
+
+    for (int i = 0; i < N; ++i) {
+        vector[i] = expf(vector[i]);
+        sum += vector[i];
+    }
+
+    for (int i = 0; i < N; ++i) {
+        vector[i] /= sum;
     }
 }

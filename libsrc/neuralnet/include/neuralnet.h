@@ -1,8 +1,18 @@
 #pragma once
 
+#include <stdbool.h>
+
 enum NeuralNetwork_Errors {
     SUCCESS,
     INVALID_ARGUMENT,
+};
+
+enum NeuralNetwork_ActivationFunctions {
+    RELU,
+    SOFTMAX,
+    SIGMOID,
+    LINEAR,
+    NONE
 };
 
 typedef struct {
@@ -10,6 +20,7 @@ typedef struct {
     int weightsPerNeuron;
     float* biases;
     float* weights;
+    enum NeuralNetwork_ActivationFunctions outputActivationFunction;
 } NeuronLayer;
 
 typedef struct {
@@ -24,7 +35,8 @@ typedef struct {
 
 typedef struct {
     int layerCount;
-    int *neuronsPerLayer;
+    int* neuronsPerLayer;
+    enum NeuralNetwork_ActivationFunctions* activationFunctions;
 } NeuralNetwork_CreateRequest;
 
 typedef struct {
@@ -39,31 +51,23 @@ typedef struct {
     int outputBufferSize;
     float* inputs;
     float* output;
-} NeuralNetwork_PropogateRequest;
+} NeuralNetwork_PropagateRequest;
 
 typedef struct {
     char* filePath;
 } NeuralNetwork_FileRequest;
 
-typedef union {
-    NeuralNetwork_CreateRequest* create;
-    NeuralNetwork_PropogateRequest* propogate;
-    NeuralNetwork_TrainRequest* train;
-    NeuralNetwork_FileRequest* file;
-} NeuralNetwork_Request;
-
 NeuralNetwork_Error NeuralNetwork_getLastError();
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request);
-
 void NeuralNetwork_destroy(NeuralNetwork* network);
-
 void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* request);
-
-void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequest* request);
-
+void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request);
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
-
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
-
 void NeuralNetwork_print(NeuralNetwork* network);
+
+void NeuralNetwork_ReLU(float* input, int N);
+void NeuralNetwork_Sigmoid(float* input, int N);
+void NeuralNetwork_Linear(float* input, int N);
+void NeuralNetwork_SoftMax(float* vector, int N);
