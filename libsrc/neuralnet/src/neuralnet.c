@@ -13,6 +13,7 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
 
     // Set the layer count
     network->layerCount = request->layerCount;
+    NeuronLayer** layers = malloc(sizeof(*layers) * request->layerCount - 1);
     
     // Initialize Each Layer
     for (int layer = 1; layer < request->layerCount; ++layer) {
@@ -23,16 +24,19 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
         currentLayer->biases = malloc(sizeof(*currentLayer->biases) * currentLayer->neuronCount);
         currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
 
-        network->layers[layer] = currentLayer;
+        layers[layer] = currentLayer;
     }
+
+    network->layers = layers;
 }
 
 void NeuralNetwork_destroy(NeuralNetwork* network) {
     for (int layer = 1; layer < network->layerCount; ++layer) {
         free(network->layers[layer]->weights);
         free(network->layers[layer]->biases);
+        free(network->layers[layer]);
     }
-    free(network);
+    free(network->layers);
 }
 
 void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* request) {

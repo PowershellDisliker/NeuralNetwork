@@ -1,12 +1,105 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#include "./neuralnet/include/neuralnet.h"
+#include "../libsrc/neuralnet/include/neuralnet.h"
 
 const int INPUT_BUFFER_SIZE = 1024;
 
-void parseRequest(char* input, NeuralNetwork* network, bool* running) {
+void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, char* words[], int wordCount) {
+    char* command = words[0];
+
+    if (strcmp(command, "create") == 0)
+    {
+        if (wordCount < 3)
+        {
+            printf("Create usage: create <layer_count> [input_n_count, l1_n_count, l2_n_count, ..., lk_n_count]\n\n");
+            return;
+        }
+
+        int layers = atoi(words[1]);
+        int neuronsPerLayer[layers];
+
+        for (int layer = 0; layer < layers; ++layer)
+        {
+            neuronsPerLayer[layer] = atoi(words[2 + layer]);
+        }
+
+        NeuralNetwork_CreateRequest request;
+        request.layerCount = layers;
+        request.neuronsPerLayer = neuronsPerLayer;
+
+        NeuralNetwork_create(network, &request);
+        printf("Created %d-layer network\n", layers);
+    }
+
+    else if (strcmp(command, "run") == 0)
+    {
+        NeuralNetwork_PropogateRequest request;
+
+        request.inputCount = atoi(words[1]);
+        request.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
+        
+        float outputs[request.outputBufferSize];
+        
+        request.output = outputs;
+
+        float inputs[request.inputCount];
+
+        for (int i = 0; i < request.inputCount; ++i)
+        {
+            inputs[i] = atof(words[2 + i]);
+        }
+
+        request.inputs = inputs;
+
+        NeuralNetwork_propogate(network, &request);
+
+        printf("Results: ");
+
+        for (int result = 0; result < request.outputBufferSize; ++result) {
+            printf("%f", outputs[result]);
+        }
+     }
+    
+    else if (strcmp(command, "train") == 0)
+    {
+
+    }
+    
+    else if (strcmp(command, "unload") == 0)
+    {
+        NeuralNetwork_destroy(network);
+
+        printf("Freed Network");
+    }
+
+    else if (strcmp(command, "save") == 0)
+    {
+
+    }
+
+    else if (strcmp(command, "load") == 0)
+    {
+
+    }
+
+    else if (strcmp(command, "quit") == 0)
+    {
+        *running = false;
+        printf("Goodbye!\n\n");
+    }
+    
+    else
+    {
+        printf("Command '%s' not recognized\n\n", command);
+    }
+}
+
+void parseRequest(char* input, NeuralNetwork* network, bool* running)
+{
+    // Split the line of input into individual words
     char* words[INPUT_BUFFER_SIZE];
     char intermediateBuffer[INPUT_BUFFER_SIZE];
 
@@ -16,11 +109,21 @@ void parseRequest(char* input, NeuralNetwork* network, bool* running) {
 
     char currentChar = input[inputIterator++];
     
-    while (currentChar != '\n' && currentChar != '\0') {
-        if (currentChar == ' ') {
+    while (currentChar != '\n' && currentChar != '\0')
+    {
+        if (currentChar == ' ')
+        {
             intermediateBuffer[intermediateBufferIterator++] = '\0';
-            words[wordIterator++] = malloc(sizeof(*words[wordIterator - 1]) * intermediateBufferIterator);
+            words[wordIterator] = malloc(sizeof(*words[wordIterator]) * intermediateBufferIterator);
+
+            for (int character = 0; character < intermediateBufferIterator; ++character)
+            {
+                words[wordIterator][character] = intermediateBuffer[character];
+            }
+
+            wordIterator++;
             intermediateBufferIterator = 0;
+            currentChar = input[inputIterator++];
             continue;
         }
 
@@ -28,20 +131,41 @@ void parseRequest(char* input, NeuralNetwork* network, bool* running) {
         currentChar = input[inputIterator++];
     }
 
-    for (int word = 0; word < wordIterator; ++word) {
-        printf("%s", words[word]);
+    if (intermediateBufferIterator > 0)
+    {
+        intermediateBuffer[intermediateBufferIterator++] = '\0';
+        words[wordIterator] = malloc(sizeof(*words[wordIterator]) * intermediateBufferIterator);
+        
+        for (int character = 0; character < intermediateBufferIterator; ++character)
+        {
+            words[wordIterator][character] = intermediateBuffer[character];
+        }
+
+        wordIterator++;
+    }
+
+    // Start parsing the command
+    parseRequest_internal(input, network, running, words, wordIterator);
+
+    // cleanup
+    for (int word = 0; word < wordIterator; ++word)
+    {
         free(words[word]);
     }
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[])
+{
     char inputBuffer[INPUT_BUFFER_SIZE];
     
     NeuralNetwork network;
     bool running = true;
 
-    while (running) {
+    while (running)
+    {
         fgets(inputBuffer, INPUT_BUFFER_SIZE, stdin);
         parseRequest(inputBuffer, &network, &running);
     }
+
+    return 0;
 }
