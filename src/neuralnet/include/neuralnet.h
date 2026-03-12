@@ -1,6 +1,6 @@
 #pragma once
 
-const enum NeuralNetwork_Errors {
+enum NeuralNetwork_Errors {
     INVALID_ARGUMENT,
 };
 
@@ -50,8 +50,6 @@ typedef union {
     NeuralNetwork_TrainRequest* train;
     NeuralNetwork_FileRequest* file;
 } NeuralNetwork_Request;
-
-NeuralNetwork_Error lastError;
 
 NeuralNetwork_Error* NeuralNetwork_getLastError();
 

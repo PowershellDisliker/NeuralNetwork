@@ -1,5 +1,8 @@
-#include "neural-net.h"
+#include "../include/neuralnet.h"
 #include <memory.h>
+#include <stdlib.h>
+
+NeuralNetwork_Error lastError;
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request) {
     if (request->layerCount < 3) {
@@ -38,13 +41,13 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
 
 void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequest* request) {
     // Validate Request
-    if (network->layers[network->layerCount - 1] < request->outputBufferSize) {
+    if (network->layers[network->layerCount - 1]->neuronCount < request->outputBufferSize) {
         lastError.type = INVALID_ARGUMENT;
         lastError.errorMessage = "Output Buffer too small for network";
         return;
     }
 
-    if (network->layers[0] != request->inputCount) {
+    if (network->layers[0]->neuronCount != request->inputCount) {
         lastError.type = INVALID_ARGUMENT;
         lastError.errorMessage = "Input vector not the same size as network input";
         return;
