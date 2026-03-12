@@ -31,7 +31,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
         request.neuronsPerLayer = neuronsPerLayer;
 
         NeuralNetwork_create(network, &request);
-        printf("Created %d-layer network\n", layers);
+        printf("Created %d-layer network\n", network->layerCount);
     }
 
     else if (strcmp(command, "run") == 0)
@@ -72,7 +72,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
     {
         NeuralNetwork_destroy(network);
 
-        printf("Freed Network");
+        printf("Freed Network\n");
     }
 
     else if (strcmp(command, "save") == 0)
@@ -89,6 +89,10 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
     {
         *running = false;
         printf("Goodbye!\n\n");
+    }
+
+    else if (strcmp(command, "print") == 0) {
+        NeuralNetwork_print(network);
     }
     
     else

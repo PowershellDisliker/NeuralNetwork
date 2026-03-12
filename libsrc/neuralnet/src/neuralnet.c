@@ -1,6 +1,7 @@
 #include "../include/neuralnet.h"
 #include <memory.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 NeuralNetwork_Error lastError;
 
@@ -13,7 +14,12 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
 
     // Set the layer count
     network->layerCount = request->layerCount;
-    NeuronLayer** layers = malloc(sizeof(*layers) * request->layerCount - 1);
+    NeuronLayer** layers = malloc(sizeof(*layers) * request->layerCount);
+
+    // Set the input layer size.
+
+    layers[0] = malloc(sizeof(*layers[0]));
+    layers[0]->neuronCount = request->neuronsPerLayer[0];
     
     // Initialize Each Layer
     for (int layer = 1; layer < request->layerCount; ++layer) {
@@ -23,6 +29,14 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
         currentLayer->weightsPerNeuron = request->neuronsPerLayer[layer - 1];
         currentLayer->biases = malloc(sizeof(*currentLayer->biases) * currentLayer->neuronCount);
         currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+
+        for (int i = 0; i < currentLayer->neuronCount; ++i) {
+            currentLayer->biases[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
+        }
+
+        for (int i = 0; i < currentLayer->neuronCount * currentLayer->weightsPerNeuron; ++i) {
+            currentLayer->weights[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
+        }
 
         layers[layer] = currentLayer;
     }
@@ -36,6 +50,7 @@ void NeuralNetwork_destroy(NeuralNetwork* network) {
         free(network->layers[layer]->biases);
         free(network->layers[layer]);
     }
+
     free(network->layers);
 }
 
@@ -107,4 +122,22 @@ void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
 
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
 
+}
+
+void NeuralNetwork_print(NeuralNetwork* network) {
+    printf("Input Layer:\n");
+    printf("%d Input Neurons\n\n", network->layers[0]->neuronCount);
+
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        printf("Layer %d:\n", layer);
+        printf("%d Neurons\n", network->layers[layer]->neuronCount);
+
+        for (int neuron = 0; neuron < network->layers[layer]->neuronCount; ++neuron) {
+            for (int weight = neuron * network->layers[layer]->weightsPerNeuron; weight < (neuron + 1) * network->layers[layer]->weightsPerNeuron; ++weight) {
+                printf("%f ", network->layers[layer]->weights[weight]);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
 }

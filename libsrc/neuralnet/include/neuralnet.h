@@ -64,3 +64,5 @@ void NeuralNetwork_propogate(NeuralNetwork* network, NeuralNetwork_PropogateRequ
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
 
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
+
+void NeuralNetwork_print(NeuralNetwork* network);
