@@ -88,9 +88,31 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
     
     else if (strcmp(command, "train") == 0)
     {
+        if (wordCount == 1) {
+            printf("Train Usage: train <epochs> <learning_rate> <input_data>\n");
+            return;
+        }
 
+        NeuralNetwork_TrainRequest request;
+
+        request.epochs = atoi(words[1]);
+        request.learningRate = atof(words[2]);
+        request.trainingDirectory = words[3];
+
+        NeuralNetwork_train(network, &request);
     }
     
+    else if (strcmp(command, "validate") == 0)
+    {
+        if (wordCount == 1) {
+            printf("Validate Usage: validate <validation_data>\n");
+            return;
+        }
+
+        NeuralNetwork_ValidateRequest request = {words[1]};
+        NeuralNetwork_validate(network, &request);
+    }
+
     else if (strcmp(command, "unload") == 0)
     {
         NeuralNetwork_destroy(network);
@@ -120,7 +142,8 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
         printf("Goodbye!\n\n");
     }
 
-    else if (strcmp(command, "print") == 0) {
+    else if (strcmp(command, "print") == 0)
+    {
         NeuralNetwork_print(network);
     }
     

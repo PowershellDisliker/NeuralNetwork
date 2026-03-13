@@ -44,8 +44,11 @@ typedef struct {
     int epochs;
     float learningRate;
     char* trainingDirectory;
-    char* validationDirectory;
 } NeuralNetwork_TrainRequest;
+
+typedef struct {
+    char* validationDirectory;
+} NeuralNetwork_ValidateRequest;
 
 typedef struct {
     int inputCount;
@@ -63,6 +66,7 @@ NeuralNetwork_Error NeuralNetwork_getLastError();
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request);
 void NeuralNetwork_destroy(NeuralNetwork* network);
 void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* request);
+void NeuralNetwork_validate(NeuralNetwork* network, NeuralNetwork_ValidateRequest* request);
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request);
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request);

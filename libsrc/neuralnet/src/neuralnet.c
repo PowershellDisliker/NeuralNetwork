@@ -93,6 +93,10 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
     
 }
 
+void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateRequest* request) {
+    
+}
+
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {
     // Validate Request
     if (network->layers[network->layerCount - 1]->neuronCount < request->outputBufferSize) {
