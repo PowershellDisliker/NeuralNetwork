@@ -17,19 +17,13 @@ NeuralNetwork_Error NeuralNetwork_getLastError() {
 }
 
 void applyActivationFunction(float* outputArray, int outputSize, enum NeuralNetwork_ActivationFunctions function) {
-    switch (function) {
-        case RELU: 
-            return NeuralNetwork_ReLU(outputArray, outputSize);
-        case SOFTMAX:
-            return NeuralNetwork_SoftMax(outputArray, outputSize);
-        case SIGMOID:
-            return NeuralNetwork_Sigmoid(outputArray, outputSize);
-        case LINEAR:
-            return NeuralNetwork_Linear(outputArray, outputSize);
-        default:
-            lastError.type = NN_INVALID_ARGUMENT;
-            lastError.errorMessage = "Invalid output activation function";
-    }
+    if (function == RELU)    return NeuralNetwork_ReLU(outputArray, outputSize);
+    if (function == SOFTMAX) return NeuralNetwork_SoftMax(outputArray, outputSize);
+    if (function == SIGMOID) return NeuralNetwork_Sigmoid(outputArray, outputSize);
+    if (function == LINEAR)  return NeuralNetwork_Linear(outputArray, outputSize);
+
+    lastError.type = NN_INVALID_ARGUMENT;
+    lastError.errorMessage = "Invalid output activation function";
 }
 
 char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
@@ -160,18 +154,18 @@ void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequ
 }
 
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
-    FILE* outFile = fopen(request->filePath, 'wb');
+    FILE* outFile = fopen(request->filePath, "wb");
 
-    fwrite(network->layerCount, sizeof(network->layerCount), 1, outFile);
+    fwrite(&network->layerCount, sizeof(network->layerCount), 1, outFile);
 
-    fwrite(network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, outFile);
+    fwrite(&network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, outFile);
 
     for (int layer = 1; layer < network->layerCount; ++layer) {
         NeuronLayer* currentLayer = network->layers[layer];
 
-        fwrite(currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, outFile);
-        fwrite(currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, outFile);
-        fwrite(currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, outFile);
+        fwrite(&currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, outFile);
+        fwrite(&currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, outFile);
+        fwrite(&currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, outFile);
         fwrite(currentLayer->weights, sizeof(*currentLayer->weights), currentLayer->neuronCount * currentLayer->weightsPerNeuron, outFile);
         fwrite(currentLayer->biases, sizeof(*currentLayer->biases), currentLayer->neuronCount, outFile);
     }
@@ -180,23 +174,25 @@ void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
 }
 
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
-    FILE* inFile = fopen(request->filePath, 'rb');
+    FILE* inFile = fopen(request->filePath, "rb");
 
     if (inFile == NULL) {
         
         return;
     }
 
-    fread(network->layerCount, sizeof(network->layerCount), 1, inFile);
+    fread(&network->layerCount, sizeof(network->layerCount), 1, inFile);
     network->layers = malloc(sizeof(*network->layers) * network->layerCount);
-    fread(network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, inFile);
+    network->layers[0] = malloc(sizeof(*network->layers[0]));
+    fread(&network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, inFile);
+
 
     for (int layer = 1; layer < network->layerCount; ++layer) {
         NeuronLayer* currentLayer = malloc(sizeof(*currentLayer));
         
-        fread(currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, inFile);
-        fread(currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, inFile);
-        fread(currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, inFile);
+        fread(&currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, inFile);
+        fread(&currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, inFile);
+        fread(&currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, inFile);
 
         currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
         currentLayer->biases = malloc(sizeof(*currentLayer->biases) * currentLayer->neuronCount);
