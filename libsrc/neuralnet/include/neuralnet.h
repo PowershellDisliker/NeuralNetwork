@@ -3,8 +3,9 @@
 #include <stdbool.h>
 
 enum NeuralNetwork_Errors {
-    SUCCESS,
-    INVALID_ARGUMENT,
+    NN_SUCCESS,
+    NN_INVALID_ARGUMENT,
+    NN_IO_ERROR,
 };
 
 enum NeuralNetwork_ActivationFunctions {

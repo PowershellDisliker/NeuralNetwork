@@ -1,15 +1,16 @@
-#include "../include/neuralnet.h"
 #include <memory.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
 
-NeuralNetwork_Error lastError = {SUCCESS, ""};
+#include "../include/neuralnet.h"
+
+NeuralNetwork_Error lastError = {NN_SUCCESS, ""};
 
 NeuralNetwork_Error NeuralNetwork_getLastError() {
     NeuralNetwork_Error errorCopy = {lastError.type, lastError.errorMessage};
     
-    lastError.type = SUCCESS;
+    lastError.type = NN_SUCCESS;
     lastError.errorMessage = "";
 
     return errorCopy;
@@ -26,7 +27,7 @@ void applyActivationFunction(float* outputArray, int outputSize, enum NeuralNetw
         case LINEAR:
             return NeuralNetwork_Linear(outputArray, outputSize);
         default:
-            lastError.type = INVALID_ARGUMENT;
+            lastError.type = NN_INVALID_ARGUMENT;
             lastError.errorMessage = "Invalid output activation function";
     }
 }
@@ -41,7 +42,7 @@ char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
 
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request) {
     if (request->layerCount < 3) {
-        lastError.type = INVALID_ARGUMENT;
+        lastError.type = NN_INVALID_ARGUMENT;
         lastError.errorMessage = "Network must have 3 or more layers";
         return;
     }
@@ -101,13 +102,13 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {
     // Validate Request
     if (network->layers[network->layerCount - 1]->neuronCount < request->outputBufferSize) {
-        lastError.type = INVALID_ARGUMENT;
+        lastError.type = NN_INVALID_ARGUMENT;
         lastError.errorMessage = "Output Buffer too small for network";
         return;
     }
 
     if (network->layers[0]->neuronCount != request->inputCount) {
-        lastError.type = INVALID_ARGUMENT;
+        lastError.type = NN_INVALID_ARGUMENT;
         lastError.errorMessage = "Input vector not the same size as network input";
         return;
     }
@@ -159,11 +160,52 @@ void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequ
 }
 
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
+    FILE* outFile = fopen(request->filePath, 'wb');
 
+    fwrite(network->layerCount, sizeof(network->layerCount), 1, outFile);
+
+    fwrite(network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, outFile);
+
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        NeuronLayer* currentLayer = network->layers[layer];
+
+        fwrite(currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, outFile);
+        fwrite(currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, outFile);
+        fwrite(currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, outFile);
+        fwrite(currentLayer->weights, sizeof(*currentLayer->weights), currentLayer->neuronCount * currentLayer->weightsPerNeuron, outFile);
+        fwrite(currentLayer->biases, sizeof(*currentLayer->biases), currentLayer->neuronCount, outFile);
+    }
+
+    fclose(outFile);
 }
 
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
+    FILE* inFile = fopen(request->filePath, 'rb');
 
+    if (inFile == NULL) {
+        
+        return;
+    }
+
+    fread(network->layerCount, sizeof(network->layerCount), 1, inFile);
+    network->layers = malloc(sizeof(*network->layers) * network->layerCount);
+    fread(network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, inFile);
+
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        NeuronLayer* currentLayer = malloc(sizeof(*currentLayer));
+        
+        fread(currentLayer->neuronCount, sizeof(currentLayer->neuronCount), 1, inFile);
+        fread(currentLayer->weightsPerNeuron, sizeof(currentLayer->weightsPerNeuron), 1, inFile);
+        fread(currentLayer->outputActivationFunction, sizeof(currentLayer->outputActivationFunction), 1, inFile);
+
+        currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+        currentLayer->biases = malloc(sizeof(*currentLayer->biases) * currentLayer->neuronCount);
+
+        fread(currentLayer->weights, sizeof(*currentLayer->weights), currentLayer->neuronCount * currentLayer->weightsPerNeuron, inFile);
+        fread(currentLayer->biases, sizeof(*currentLayer->biases), currentLayer->neuronCount, inFile);
+
+        network->layers[layer] = currentLayer;
+    }
 }
 
 void NeuralNetwork_print(NeuralNetwork* network) {

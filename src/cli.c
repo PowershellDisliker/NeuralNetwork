@@ -73,7 +73,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
 
         NeuralNetwork_propagate(network, &request);
 
-        if (NeuralNetwork_getLastError().type != SUCCESS) {
+        if (NeuralNetwork_getLastError().type != NN_SUCCESS) {
             printf("Error calculating result");
             return;
         }
@@ -100,12 +100,18 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
 
     else if (strcmp(command, "save") == 0)
     {
-
+        NeuralNetwork_FileRequest request = {words[1]};
+    
+        NeuralNetwork_save(network, &request);
+        printf("Network Saved.\n");
     }
 
     else if (strcmp(command, "load") == 0)
     {
+        NeuralNetwork_FileRequest request = {words[1]};
 
+        NeuralNetwork_load(network, &request);
+        printf("Loaded Network.\n");
     }
 
     else if (strcmp(command, "quit") == 0)
