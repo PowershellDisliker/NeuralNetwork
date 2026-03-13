@@ -34,6 +34,33 @@ char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
     else return "Error";
 }
 
+NeuralNetwork_Samples* getSamples(char* inputFilePath) {
+    NeuralNetwork_Samples* toReturn = malloc(sizeof(*toReturn));
+
+    FILE* inputFile = fopen(inputFilePath, "rb");
+    unsigned int sampleCount;
+
+    fread(&sampleCount, sizeof(sampleCount), 1, inputFile);
+
+    toReturn->samples = malloc(sizeof(*toReturn->samples) * sampleCount);
+
+    for (int sampleNumber = 0; sampleNumber < sampleCount; ++sampleNumber) {
+        NeuralNetwork_Sample* currentSample = malloc(sizeof(*toReturn->samples[sampleNumber]));
+        
+        fread(&currentSample->inputCount, sizeof(currentSample->inputCount), 1, inputFile);
+        currentSample->inputs = malloc(sizeof(*currentSample->inputs) * currentSample->inputCount);
+        fread(currentSample->inputs, sizeof(*currentSample->inputs), currentSample->inputCount, inputFile);
+        fread(&currentSample->outputCount, sizeof(currentSample->outputCount), 1, inputFile);
+        currentSample->outputs = malloc(sizeof(*currentSample->outputs) * currentSample->outputCount);
+        fread(currentSample->outputs, sizeof(*currentSample->outputs), currentSample->outputCount, inputFile);
+
+        toReturn->samples[sampleNumber] = currentSample;
+    }
+    
+    toReturn->sampleCount = sampleCount;
+    return toReturn;
+}
+
 void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* request) {
     if (request->layerCount < 3) {
         lastError.type = NN_INVALID_ARGUMENT;
@@ -46,7 +73,6 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
     NeuronLayer** layers = malloc(sizeof(*layers) * request->layerCount);
 
     // Set the input layer size.
-
     layers[0] = malloc(sizeof(*layers[0]));
     layers[0]->neuronCount = request->neuronsPerLayer[0];
     
@@ -94,7 +120,28 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
 }
 
 void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateRequest* request) {
-    
+    NeuralNetwork_Samples* samples = getSamples(request->validationDirectory);
+
+    for (int sample = 0; sample < samples->sampleCount; ++sample) {
+        NeuralNetwork_PropagateRequest innerRequest;
+
+        
+        innerRequest.inputCount = samples->samples[sample]->inputCount;
+        innerRequest.inputs = samples->samples[sample]->inputs;
+        innerRequest.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
+        float outputBuffer[innerRequest.outputBufferSize];
+        innerRequest.output = outputBuffer;
+        
+        NeuralNetwork_propagate(network, &innerRequest);
+
+        float totalSquaredError = 0.0f;
+
+        for (int outputFeature = 0; outputFeature < innerRequest.outputBufferSize; ++outputFeature) {
+            totalSquaredError += (outputBuffer[outputFeature] - samples->samples[outputFeature]->outputs[outputFeature]) * (outputBuffer[outputFeature] - samples->samples[outputFeature]->outputs[outputFeature]);
+        }
+
+        request->rmse += sqrtf(totalSquaredError / innerRequest.outputBufferSize) / samples->sampleCount;
+    }
 }
 
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {

@@ -48,6 +48,7 @@ typedef struct {
 
 typedef struct {
     char* validationDirectory;
+    float rmse;
 } NeuralNetwork_ValidateRequest;
 
 typedef struct {
@@ -60,6 +61,18 @@ typedef struct {
 typedef struct {
     char* filePath;
 } NeuralNetwork_FileRequest;
+
+typedef struct {
+    int inputCount;
+    float* inputs;
+    int outputCount;
+    float *outputs;
+} NeuralNetwork_Sample;
+
+typedef struct {
+    int sampleCount;
+    NeuralNetwork_Sample** samples;
+} NeuralNetwork_Samples;
 
 NeuralNetwork_Error NeuralNetwork_getLastError();
 
