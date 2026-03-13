@@ -110,6 +110,7 @@ void parseRequest_internal(char* input, NeuralNetwork* network, bool* running, c
         }
 
         NeuralNetwork_ValidateRequest request = {words[1], 0.0f};
+
         NeuralNetwork_validate(network, &request);
 
         printf("Root Mean Squared Error: %f\n", request.rmse);

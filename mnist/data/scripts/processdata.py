@@ -80,14 +80,16 @@ def main() -> None:
     (x_train, y_train), (x_test, y_test) = data_loader.load_data()
 
     datasets = [
-        (x_train, y_train, "../train/data"),
-        (x_test, y_test, "../validate/data")
+        (x_train, y_train, "./train"),
+        (x_test, y_test, "./validate")
     ]
 
     for images, labels, filepath in datasets:
         with open(filepath, "wb") as file:
             total_samples = len(images)
-            file.write(struct.pack(">I", total_samples))
+            file.write(struct.pack("<I", total_samples))
+
+            print(total_samples)
 
             for img, label in zip(images, labels):
                 flattened_img = [float(pixel) for row in img for pixel in row]
@@ -95,12 +97,12 @@ def main() -> None:
                 one_hot_label = [1.0 if i == label else 0.0 for i in range(10)]
 
                 input_len = len(flattened_img)
-                file.write(struct.pack(">I", input_len))
-                file.write(struct.pack(f">{input_len}f", *flattened_img))
+                file.write(struct.pack("<I", input_len))
+                file.write(struct.pack(f"<{input_len}f", *flattened_img))
 
                 output_len = len(one_hot_label)
-                file.write(struct.pack(">I", output_len))
-                file.write(struct.pack(f">{output_len}f", *one_hot_label))
+                file.write(struct.pack("<I", output_len))
+                file.write(struct.pack(f"<{output_len}f", *one_hot_label))
 
     print("Files successfully packed!")
 

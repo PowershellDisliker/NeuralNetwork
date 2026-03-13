@@ -38,9 +38,11 @@ NeuralNetwork_Samples* getSamples(char* inputFilePath) {
     NeuralNetwork_Samples* toReturn = malloc(sizeof(*toReturn));
 
     FILE* inputFile = fopen(inputFilePath, "rb");
-    unsigned int sampleCount;
+    int sampleCount;
 
     fread(&sampleCount, sizeof(sampleCount), 1, inputFile);
+
+    printf("Reading %d Samples\n", sampleCount);
 
     toReturn->samples = malloc(sizeof(*toReturn->samples) * sampleCount);
 
@@ -125,7 +127,6 @@ void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateReques
     for (int sample = 0; sample < samples->sampleCount; ++sample) {
         NeuralNetwork_PropagateRequest innerRequest;
 
-        
         innerRequest.inputCount = samples->samples[sample]->inputCount;
         innerRequest.inputs = samples->samples[sample]->inputs;
         innerRequest.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
@@ -137,11 +138,22 @@ void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateReques
         float totalSquaredError = 0.0f;
 
         for (int outputFeature = 0; outputFeature < innerRequest.outputBufferSize; ++outputFeature) {
-            totalSquaredError += (outputBuffer[outputFeature] - samples->samples[outputFeature]->outputs[outputFeature]) * (outputBuffer[outputFeature] - samples->samples[outputFeature]->outputs[outputFeature]);
+            float error = outputBuffer[outputFeature] - samples->samples[sample]->outputs[outputFeature];
+            totalSquaredError += error * error;
         }
 
-        request->rmse += sqrtf(totalSquaredError / innerRequest.outputBufferSize) / samples->sampleCount;
+        request->rmse += totalSquaredError / innerRequest.outputBufferSize;
+    
+        free(samples->samples[sample]->inputs);
+        free(samples->samples[sample]->outputs);
+        free(samples->samples[sample]);
     }
+
+    free(samples->samples);
+    free(samples);
+    
+    request->rmse /= samples->sampleCount;
+    request->rmse = sqrtf(request->rmse);
 }
 
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {
