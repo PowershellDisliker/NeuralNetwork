@@ -38,6 +38,11 @@ NeuralNetwork_Samples* getSamples(char* inputFilePath) {
     NeuralNetwork_Samples* toReturn = malloc(sizeof(*toReturn));
 
     FILE* inputFile = fopen(inputFilePath, "rb");
+
+    if (!inputFile) {
+        return NULL;
+    }
+
     int sampleCount;
 
     fread(&sampleCount, sizeof(sampleCount), 1, inputFile);
@@ -151,7 +156,7 @@ void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateReques
 
     free(samples->samples);
     free(samples);
-    
+
     request->rmse /= samples->sampleCount;
     request->rmse = sqrtf(request->rmse);
 }
