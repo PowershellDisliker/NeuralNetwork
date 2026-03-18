@@ -23,7 +23,17 @@ void applyActivationFunction(float* outputArray, int outputSize, enum NeuralNetw
     if (function == LINEAR)  return NeuralNetwork_Linear(outputArray, outputSize);
 
     lastError.type = NN_INVALID_ARGUMENT;
-    lastError.errorMessage = "Invalid output activation function";
+    lastError.errorMessage = "Invalid Activation Function\n";
+}
+
+void applyActivationDerivative(float* outputArray, int outputSize, enum NeuralNetwork_ActivationFunctions activationFunction) {
+    if (activationFunction == RELU)    return NeuralNetwork_ReLUDerrivative(outputArray, outputSize);
+    if (activationFunction == SOFTMAX) return NeuralNetwork_SoftMaxDerrivative(outputArray, outputSize);
+    if (activationFunction == SIGMOID) return NeuralNetwork_SigmoidDerrivative(outputArray, outputSize);
+    if (activationFunction == LINEAR)  return NeuralNetwork_LinearDerrivative(outputArray, outputSize);
+
+    lastError.type = NN_INVALID_ARGUMENT;
+    lastError.errorMessage = "Invalid Activation Function\n";
 }
 
 char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
@@ -32,6 +42,32 @@ char* getActivationString(enum NeuralNetwork_ActivationFunctions activation) {
     if (activation == LINEAR)  return "Linear";
     if (activation == SOFTMAX) return "SoftMax";
     else return "Error";
+}
+
+int getLargestNeuronCount(NeuralNetwork* network) {
+    int maxNeurons = -1;
+    
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        if (maxNeurons < network->layers[layer]->neuronCount) maxNeurons = network->layers[layer]->neuronCount;
+    }
+
+    if (maxNeurons < 0) {
+        lastError.errorMessage = "Could not find neuron count in any network layers.\n";
+        lastError.type = NN_INVALID_ARGUMENT;
+    }
+
+    return maxNeurons;
+}
+
+float getMSE(float* outputs, float* expectedOutputs, int N) {
+    float totalSquaredError = 0.0f;
+
+    for (int i = 0; i < N; ++i) {
+        float error = outputs[i] - expectedOutputs[i];
+        totalSquaredError += error * error;
+    }
+
+    return totalSquaredError / N;
 }
 
 NeuralNetwork_Samples* getSamples(char* inputFilePath) {
@@ -123,7 +159,89 @@ void NeuralNetwork_destroy(NeuralNetwork* network) {
 }
 
 void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* request) {
+    // Create weight update buffers
+    float* weightBuffers[network->layerCount - 1];
+    long* biasBuffers[network->layerCount - 1];
+
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        NeuronLayer* currentLayer = network->layers[layer];
+
+        weightBuffers[layer] = malloc(sizeof(*weightBuffers[layer]) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+        biasBuffers[layer] = malloc(sizeof(*biasBuffers[layer]) * currentLayer->neuronCount);
+        
+        if (weightBuffers[layer] == NULL || biasBuffers[layer] == NULL) {
+            lastError.errorMessage = "Error allocating space for weight or bias update buffer\n";
+            lastError.type = NN_ALLOCATION_ERROR;
+        
+            return;
+        }
+
+        memset(weightBuffers[layer], 0.0f, currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+        memset(biasBuffers[layer], 0.0f, currentLayer->neuronCount);
+    }
+
+    // Get Training Data
+    NeuralNetwork_Samples* samples = getSamples(request->trainingDirectory);
     
+    // training loop
+    for (int epoch = 0; epoch < request->epochs; ++epoch) {
+        for (int sample = 0; sample < samples->sampleCount; ++sample) {
+            NeuralNetwork_Sample* currentSample = samples->samples[sample];
+
+            // Mini-batch complete
+            if ((sample + 1) % request->samplesPerWeightUpdate == 0) {
+
+                // update network weights and biases
+                for (int layer = network->layerCount - 1; layer > 0; ++layer) {
+                    NeuronLayer* currentLayer = network->layers[layer];
+
+                    // Update network weights
+                    for (int neuron = 0; neuron < network->layers[layer]->neuronCount; ++neuron) {
+                        for (int weight = 0; weight < network->layers[layer]->weightsPerNeuron; ++weight) {
+                            currentLayer->weights[neuron] -= weightBuffers[layer][neuron];
+                        }
+                    }
+
+                    // reset weights and biases buffer
+                    memset(weightBuffers[layer], 0.0f, currentLayer->neuronCount * currentLayer->weightsPerNeuron);
+                    memset(biasBuffers[layer], 0.0f, currentLayer->neuronCount);
+                }
+            }
+
+            // backprop
+            int bufferSize = getLargestNeuronCount(network);
+            float* outputBufferA = malloc(sizeof(*outputBufferA) * bufferSize);
+            float* outputBufferB = malloc(sizeof(*outputBufferB) * bufferSize);
+            
+            NeuralNetwork_PropagateRequest innerRequest;
+            innerRequest.inputCount = currentSample->inputCount;
+            innerRequest.inputs = currentSample->inputs;
+            innerRequest.outputBufferSize = bufferSize;
+            innerRequest.output = outputBufferA;
+
+            NeuralNetwork_propagate(network, &innerRequest);
+
+            // update buffers
+            for (int layer = network->layerCount - 1; layer > 0; ++layer) {
+                NeuronLayer* currentLayer = network->layers[layer];
+                
+                // update intermediate buffers
+                for (int neuron = 0; neuron < currentLayer->neuronCount; ++neuron) {
+                    biasBuffers[layer][neuron] += 0.0f;
+
+                    for (int weight = 0; weight < currentLayer->weightsPerNeuron; ++weight) {
+                        weightBuffers[layer][neuron] += request->learningRate * getMSE();
+                    }
+                }
+            }
+        }
+    }
+
+    // Cleanup
+    for (int layer = 1; layer < network->layerCount; ++layer) {
+        free(weightBuffers[layer]);
+        free(biasBuffers[layer]);
+    }
 }
 
 void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateRequest* request) {
@@ -131,34 +249,25 @@ void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateReques
 
     for (int sample = 0; sample < samples->sampleCount; ++sample) {
         NeuralNetwork_PropagateRequest innerRequest;
+        NeuralNetwork_Sample* currentSample = samples->samples[sample];
 
-        innerRequest.inputCount = samples->samples[sample]->inputCount;
-        innerRequest.inputs = samples->samples[sample]->inputs;
+        innerRequest.inputCount = currentSample->inputCount;
+        innerRequest.inputs = currentSample->inputs;
         innerRequest.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
         float outputBuffer[innerRequest.outputBufferSize];
         innerRequest.output = outputBuffer;
         
         NeuralNetwork_propagate(network, &innerRequest);
-
-        float totalSquaredError = 0.0f;
-
-        for (int outputFeature = 0; outputFeature < innerRequest.outputBufferSize; ++outputFeature) {
-            float error = outputBuffer[outputFeature] - samples->samples[sample]->outputs[outputFeature];
-            totalSquaredError += error * error;
-        }
-
-        request->rmse += totalSquaredError / innerRequest.outputBufferSize;
     
-        free(samples->samples[sample]->inputs);
-        free(samples->samples[sample]->outputs);
-        free(samples->samples[sample]);
+        request->mse = getMSE(outputBuffer, currentSample->outputs, innerRequest.outputBufferSize);
+
+        free(currentSample->inputs);
+        free(currentSample->outputs);
+        free(currentSample);
     }
 
     free(samples->samples);
     free(samples);
-
-    request->rmse /= samples->sampleCount;
-    request->rmse = sqrtf(request->rmse);
 }
 
 void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequest* request) {
@@ -313,6 +422,41 @@ void NeuralNetwork_Sigmoid(float* input, int N) {
 }
 
 void NeuralNetwork_SoftMax(float* vector, int N) {
+    float sum = 0.0f;
+
+    for (int i = 0; i < N; ++i) {
+        vector[i] = expf(vector[i]);
+        sum += vector[i];
+    }
+
+    for (int i = 0; i < N; ++i) {
+        vector[i] /= sum;
+    }
+}
+
+void NeuralNetwork_ReLUDerrivative(float* input, int N) {
+    for (int i = 0; i < N; ++i) {
+        if (input[i] < 0) input[i] = 0;
+        else input[i] = 1.0f;
+    }
+}
+
+void NeuralNetwork_LinearDerrivative(float* input, int N) {
+    for (int i = 0; i < N; ++i) {
+        input[i] = 1.0f;
+    }
+}
+
+void NeuralNetwork_SigmoidDerrivative(float* input, int N) {
+    for (int i = 0; i < N; ++i) {
+        float inputCopy = input[i];
+        NeuralNetwork_Sigmoid(&inputCopy, 1);
+    
+        input[i] = inputCopy * (1 - inputCopy);
+    }
+}
+
+void NeuralNetwork_SoftMaxDerrivative(float* vector, int N) {
     float sum = 0.0f;
 
     for (int i = 0; i < N; ++i) {

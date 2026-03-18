@@ -6,6 +6,7 @@ enum NeuralNetwork_Errors {
     NN_SUCCESS,
     NN_INVALID_ARGUMENT,
     NN_IO_ERROR,
+    NN_ALLOCATION_ERROR,
 };
 
 enum NeuralNetwork_ActivationFunctions {
@@ -42,13 +43,14 @@ typedef struct {
 
 typedef struct {
     int epochs;
+    int samplesPerWeightUpdate;
     float learningRate;
     char* trainingDirectory;
 } NeuralNetwork_TrainRequest;
 
 typedef struct {
     char* validationDirectory;
-    float rmse;
+    float mse;
 } NeuralNetwork_ValidateRequest;
 
 typedef struct {
@@ -89,3 +91,8 @@ void NeuralNetwork_ReLU(float* input, int N);
 void NeuralNetwork_Sigmoid(float* input, int N);
 void NeuralNetwork_Linear(float* input, int N);
 void NeuralNetwork_SoftMax(float* vector, int N);
+
+void NeuralNetwork_ReLUDerrivative(float* input, int N);
+void NeuralNetwork_SigmoidDerrivative(float* input, int N);
+void NeuralNetwork_LinearDerrivative(float* input, int N);
+void NeuralNetwork_SoftMaxDerrivative(float* vector, int N);
