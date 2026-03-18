@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 
 #include "../include/neuralnet.h"
 
@@ -136,24 +137,24 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
         for (int i = 0; i < currentLayer->neuronCount * currentLayer->weightsPerNeuron; ++i) {
             currentLayer->weights[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
         }
-
+        
         layers[layer] = currentLayer;
     }
-
+    
     network->layers = layers;
 }
 
 void NeuralNetwork_destroy(NeuralNetwork* network) {
     free(network->layers[0]);
-
+    
     for (int layer = 1; layer < network->layerCount; ++layer) {
         free(network->layers[layer]->weights);
         free(network->layers[layer]->biases);
         free(network->layers[layer]);
     }
-
+    
     free(network->layers);
-
+    
     network->layerCount = -1;
     network->layers = NULL;
 }
@@ -162,6 +163,11 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
     // Create weight update buffers
     float* weightBuffers[network->layerCount - 1];
     long* biasBuffers[network->layerCount - 1];
+    int bufferSize = getLargestNeuronCount(network);
+    
+    float* outputBuffer = malloc(sizeof(*outputBuffer) * bufferSize);
+    float* deltaBuffer = malloc(sizeof(*deltaBuffer) * bufferSize);
+    float* derrivativeBuffer = malloc(sizeof(*deltaBuffer) * bufferSize);
 
     for (int layer = 1; layer < network->layerCount; ++layer) {
         NeuronLayer* currentLayer = network->layers[layer];
@@ -181,7 +187,7 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
     }
 
     // Get Training Data
-    NeuralNetwork_Samples* samples = getSamples(request->trainingDirectory);
+    NeuralNetwork_Samples* samples = getSamples(request->trainingFilePath);
     
     // training loop
     for (int epoch = 0; epoch < request->epochs; ++epoch) {
@@ -209,17 +215,23 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
             }
 
             // backprop
-            int bufferSize = getLargestNeuronCount(network);
-            float* outputBufferA = malloc(sizeof(*outputBufferA) * bufferSize);
-            float* outputBufferB = malloc(sizeof(*outputBufferB) * bufferSize);
-            
+
             NeuralNetwork_PropagateRequest innerRequest;
             innerRequest.inputCount = currentSample->inputCount;
             innerRequest.inputs = currentSample->inputs;
             innerRequest.outputBufferSize = bufferSize;
-            innerRequest.output = outputBufferA;
+            innerRequest.output = outputBuffer;
 
             NeuralNetwork_propagate(network, &innerRequest);
+
+            memcpy(derrivativeBuffer, outputBuffer, bufferSize);
+
+            applyActivationDerivative(derrivativeBuffer, network->layers[network->layerCount - 1]->neuronCount, network->layers[network->layerCount - 1]->outputActivationFunction);
+
+            for (int neuron = 0; neuron < network->layers[network->layerCount - 1]->neuronCount; ++neuron) {
+                deltaBuffer[neuron] += \
+                (innerRequest.output[neuron] - currentSample->outputs[neuron]) * derrivativeBuffer[neuron];
+            }
 
             // update buffers
             for (int layer = network->layerCount - 1; layer > 0; ++layer) {
@@ -230,9 +242,21 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
                     biasBuffers[layer][neuron] += 0.0f;
 
                     for (int weight = 0; weight < currentLayer->weightsPerNeuron; ++weight) {
-                        weightBuffers[layer][neuron] += request->learningRate * getMSE();
+                        weightBuffers[layer][neuron] += request->learningRate * deltaBuffer[neuron];
                     }
                 }
+            }
+        }
+    }
+
+    // Final update if there is a remainder of samples * epoch / mini-batch size
+    for (int layer = network->layerCount - 1; layer > 0; ++layer) {
+        NeuronLayer* currentLayer = network->layers[layer];
+
+        // Update network weights
+        for (int neuron = 0; neuron < network->layers[layer]->neuronCount; ++neuron) {
+            for (int weight = 0; weight < network->layers[layer]->weightsPerNeuron; ++weight) {
+                currentLayer->weights[neuron] -= weightBuffers[layer][neuron];
             }
         }
     }
@@ -242,10 +266,13 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
         free(weightBuffers[layer]);
         free(biasBuffers[layer]);
     }
+    free(outputBuffer);
+    free(deltaBuffer);
+    free(derrivativeBuffer);
 }
 
 void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateRequest* request) {
-    NeuralNetwork_Samples* samples = getSamples(request->validationDirectory);
+    NeuralNetwork_Samples* samples = getSamples(request->validationFilePath);
 
     for (int sample = 0; sample < samples->sampleCount; ++sample) {
         NeuralNetwork_PropagateRequest innerRequest;
@@ -354,7 +381,6 @@ void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
     FILE* inFile = fopen(request->filePath, "rb");
 
     if (inFile == NULL) {
-        
         return;
     }
 
@@ -362,7 +388,6 @@ void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
     network->layers = malloc(sizeof(*network->layers) * network->layerCount);
     network->layers[0] = malloc(sizeof(*network->layers[0]));
     fread(&network->layers[0]->neuronCount, sizeof(network->layers[0]->neuronCount), 1, inFile);
-
 
     for (int layer = 1; layer < network->layerCount; ++layer) {
         NeuronLayer* currentLayer = malloc(sizeof(*currentLayer));

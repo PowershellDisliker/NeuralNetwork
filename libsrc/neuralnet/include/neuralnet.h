@@ -45,11 +45,11 @@ typedef struct {
     int epochs;
     int samplesPerWeightUpdate;
     float learningRate;
-    char* trainingDirectory;
+    char* trainingFilePath;
 } NeuralNetwork_TrainRequest;
 
 typedef struct {
-    char* validationDirectory;
+    char* validationFilePath;
     float mse;
 } NeuralNetwork_ValidateRequest;
 
