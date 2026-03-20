@@ -17,21 +17,21 @@ NeuralNetwork_Error NeuralNetwork_getLastError() {
     return errorCopy;
 }
 
-void applyActivationFunction(float* outputArray, int outputSize, enum NeuralNetwork_ActivationFunctions function) {
-    if (function == RELU)    return NeuralNetwork_ReLU(outputArray, outputSize);
-    if (function == SOFTMAX) return NeuralNetwork_SoftMax(outputArray, outputSize);
-    if (function == SIGMOID) return NeuralNetwork_Sigmoid(outputArray, outputSize);
-    if (function == LINEAR)  return NeuralNetwork_Linear(outputArray, outputSize);
+void applyActivationFunction(float* inputArray, float* outputArray, int N, enum NeuralNetwork_ActivationFunctions function) {
+    if (function == RELU)    return NeuralNetwork_ReLU(inputArray, outputArray, N);
+    if (function == SOFTMAX) return NeuralNetwork_SoftMax(inputArray, outputArray, N);
+    if (function == SIGMOID) return NeuralNetwork_Sigmoid(inputArray, outputArray, N);
+    if (function == LINEAR)  return NeuralNetwork_Linear(inputArray, outputArray, N);
 
     lastError.type = NN_INVALID_ARGUMENT;
     lastError.errorMessage = "Invalid Activation Function\n";
 }
 
-void applyActivationDerivative(float* outputArray, int outputSize, enum NeuralNetwork_ActivationFunctions activationFunction) {
-    if (activationFunction == RELU)    return NeuralNetwork_ReLUDerrivative(outputArray, outputSize);
-    if (activationFunction == SOFTMAX) return NeuralNetwork_SoftMaxDerrivative(outputArray, outputSize);
-    if (activationFunction == SIGMOID) return NeuralNetwork_SigmoidDerrivative(outputArray, outputSize);
-    if (activationFunction == LINEAR)  return NeuralNetwork_LinearDerrivative(outputArray, outputSize);
+void applyActivationDerivative(float* inputArray, float* outputArray, int N, enum NeuralNetwork_ActivationFunctions activationFunction) {
+    if (activationFunction == RELU)    return NeuralNetwork_ReLUDerrivative(inputArray, outputArray, N);
+    if (activationFunction == SOFTMAX) return NeuralNetwork_SoftMaxDerrivative(inputArray, outputArray, N);
+    if (activationFunction == SIGMOID) return NeuralNetwork_SigmoidDerrivative(inputArray, outputArray, N);
+    if (activationFunction == LINEAR)  return NeuralNetwork_LinearDerrivative(inputArray, outputArray, N);
 
     lastError.type = NN_INVALID_ARGUMENT;
     lastError.errorMessage = "Invalid Activation Function\n";
@@ -109,16 +109,26 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
     if (request->layerCount < 3) {
         lastError.type = NN_INVALID_ARGUMENT;
         lastError.errorMessage = "Network must have 3 or more layers";
+
         return;
     }
 
     // Set the layer count
     network->layerCount = request->layerCount;
-    NeuronLayer** layers = malloc(sizeof(*layers) * request->layerCount);
+    network->activatedBuffers = malloc(sizeof(*network->activatedBuffers) * request->layerCount);
+    network->unactivatedBuffers = malloc(sizeof(*network->unactivatedBuffers) * request->layerCount);
+    network->layers = malloc(sizeof(*network->layers) * request->layerCount);
+    
+    for (int layer = 0; layer < network->layerCount; ++layer) {
+        int neuronCount = request->neuronsPerLayer[layer];
+
+        network->unactivatedBuffers[layer - 1] = malloc(sizeof(*network->unactivatedBuffers) * neuronCount);
+        network->activatedBuffers[layer - 1] = malloc(sizeof(*network->activatedBuffers[layer - 1]) * neuronCount);
+    }
 
     // Set the input layer size.
-    layers[0] = malloc(sizeof(*layers[0]));
-    layers[0]->neuronCount = request->neuronsPerLayer[0];
+    network->layers[0] = malloc(sizeof(*network->layers[0]));
+    network->layers[0]->neuronCount = request->neuronsPerLayer[0];
     
     // Initialize Each Layer
     for (int layer = 1; layer < request->layerCount; ++layer) {
@@ -130,6 +140,7 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
         currentLayer->weights = malloc(sizeof(*currentLayer->weights) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
         currentLayer->outputActivationFunction = request->activationFunctions[layer];
 
+
         for (int i = 0; i < currentLayer->neuronCount; ++i) {
             currentLayer->biases[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
         }
@@ -138,14 +149,17 @@ void NeuralNetwork_create(NeuralNetwork* network, NeuralNetwork_CreateRequest* r
             currentLayer->weights[i] = (((float) rand() / (float) RAND_MAX) * 2) - 1.0f;
         }
         
-        layers[layer] = currentLayer;
+        network->layers[layer] = currentLayer;
     }
-    
-    network->layers = layers;
 }
 
 void NeuralNetwork_destroy(NeuralNetwork* network) {
     free(network->layers[0]);
+
+    for (int layer = 0; layer < network->layerCount; ++layer) {
+        free(network->unactivatedBuffers[layer]);
+        free(network->activatedBuffers[layer]);
+    }
     
     for (int layer = 1; layer < network->layerCount; ++layer) {
         free(network->layers[layer]->weights);
@@ -153,6 +167,8 @@ void NeuralNetwork_destroy(NeuralNetwork* network) {
         free(network->layers[layer]);
     }
     
+    free(network->unactivatedBuffers);
+    free(network->activatedBuffers);
     free(network->layers);
     
     network->layerCount = -1;
@@ -164,16 +180,30 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
     float* weightBuffers[network->layerCount - 1];
     long* biasBuffers[network->layerCount - 1];
     int bufferSize = getLargestNeuronCount(network);
+    int outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
     
-    float* outputBuffer = malloc(sizeof(*outputBuffer) * bufferSize);
-    float* deltaBuffer = malloc(sizeof(*deltaBuffer) * bufferSize);
-    float* derrivativeBuffer = malloc(sizeof(*deltaBuffer) * bufferSize);
+    float* outputBuffer = malloc(sizeof(*outputBuffer) * outputBufferSize);
+    float* previousLayerError = malloc(sizeof(*previousLayerError) * bufferSize);
+    float* currentLayerError = malloc(sizeof(*currentLayerError) * bufferSize);
 
+    NeuralNetwork_PropagateRequest innerRequest;
+    innerRequest.outputBufferSize = outputBufferSize;
+    innerRequest.output = outputBuffer;
+    
     for (int layer = 1; layer < network->layerCount; ++layer) {
         NeuronLayer* currentLayer = network->layers[layer];
+        int totalLayerWeights = currentLayer->neuronCount * currentLayer->weightsPerNeuron;
+        int totalLayerBiases = currentLayer->neuronCount;
 
-        weightBuffers[layer] = malloc(sizeof(*weightBuffers[layer]) * currentLayer->neuronCount * currentLayer->weightsPerNeuron);
-        biasBuffers[layer] = malloc(sizeof(*biasBuffers[layer]) * currentLayer->neuronCount);
+        if (totalLayerWeights < 0 || totalLayerBiases < 0) {
+            lastError.errorMessage = "Overflow while calculating total weights or biases in layer\n";
+            lastError.type = NN_OVERFLOW_ERROR;
+
+            return;
+        }
+
+        weightBuffers[layer] = malloc(sizeof(*weightBuffers[layer]) * totalLayerWeights);
+        biasBuffers[layer] = malloc(sizeof(*biasBuffers[layer]) * totalLayerBiases);
         
         if (weightBuffers[layer] == NULL || biasBuffers[layer] == NULL) {
             lastError.errorMessage = "Error allocating space for weight or bias update buffer\n";
@@ -182,8 +212,8 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
             return;
         }
 
-        memset(weightBuffers[layer], 0.0f, currentLayer->neuronCount * currentLayer->weightsPerNeuron);
-        memset(biasBuffers[layer], 0.0f, currentLayer->neuronCount);
+        memset(weightBuffers[layer], 0.0f, totalLayerWeights);
+        memset(biasBuffers[layer], 0.0f, totalLayerBiases);
     }
 
     // Get Training Data
@@ -195,7 +225,7 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
             NeuralNetwork_Sample* currentSample = samples->samples[sample];
 
             // Mini-batch complete
-            if ((sample + 1) % request->samplesPerWeightUpdate == 0) {
+            if ((epoch * samples->sampleCount + sample + 1) % request->samplesPerWeightUpdate == 0) {
 
                 // update network weights and biases
                 for (int layer = network->layerCount - 1; layer > 0; ++layer) {
@@ -215,36 +245,32 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
             }
 
             // backprop
-
-            NeuralNetwork_PropagateRequest innerRequest;
             innerRequest.inputCount = currentSample->inputCount;
             innerRequest.inputs = currentSample->inputs;
-            innerRequest.outputBufferSize = bufferSize;
-            innerRequest.output = outputBuffer;
 
+            // Output Layer
             NeuralNetwork_propagate(network, &innerRequest);
-
-            memcpy(derrivativeBuffer, outputBuffer, bufferSize);
-
-            applyActivationDerivative(derrivativeBuffer, network->layers[network->layerCount - 1]->neuronCount, network->layers[network->layerCount - 1]->outputActivationFunction);
+            memcpy(currentLayerError, outputBuffer, bufferSize);
+            applyActivationDerivative(currentLayerError, currentLayerError, network->layers[network->layerCount - 1]->neuronCount, network->layers[network->layerCount - 1]->outputActivationFunction);
 
             for (int neuron = 0; neuron < network->layers[network->layerCount - 1]->neuronCount; ++neuron) {
-                deltaBuffer[neuron] += \
-                (innerRequest.output[neuron] - currentSample->outputs[neuron]) * derrivativeBuffer[neuron];
+                previousLayerError[neuron] += (innerRequest.output[neuron] - currentSample->outputs[neuron]);
             }
 
-            // update buffers
+            // Hidden Layers
             for (int layer = network->layerCount - 1; layer > 0; ++layer) {
                 NeuronLayer* currentLayer = network->layers[layer];
                 
                 // update intermediate buffers
                 for (int neuron = 0; neuron < currentLayer->neuronCount; ++neuron) {
-                    biasBuffers[layer][neuron] += 0.0f;
+                    biasBuffers[layer][neuron] += request->learningRate * previousLayerError[neuron];
 
                     for (int weight = 0; weight < currentLayer->weightsPerNeuron; ++weight) {
-                        weightBuffers[layer][neuron] += request->learningRate * deltaBuffer[neuron];
+                        weightBuffers[layer][neuron] += request->learningRate * previousLayerError[neuron];
                     }
                 }
+
+                previousLayerError = currentLayerError;
             }
         }
     }
@@ -267,22 +293,23 @@ void NeuralNetwork_train(NeuralNetwork* network, NeuralNetwork_TrainRequest* req
         free(biasBuffers[layer]);
     }
     free(outputBuffer);
-    free(deltaBuffer);
-    free(derrivativeBuffer);
+    free(previousLayerError);
+    free(currentLayerError);
 }
 
 void NeuralNetwork_validate(NeuralNetwork *network, NeuralNetwork_ValidateRequest* request) {
     NeuralNetwork_Samples* samples = getSamples(request->validationFilePath);
 
+    NeuralNetwork_PropagateRequest innerRequest;
+    innerRequest.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
+    float outputBuffer[innerRequest.outputBufferSize];
+    innerRequest.output = outputBuffer;
+
     for (int sample = 0; sample < samples->sampleCount; ++sample) {
-        NeuralNetwork_PropagateRequest innerRequest;
         NeuralNetwork_Sample* currentSample = samples->samples[sample];
 
         innerRequest.inputCount = currentSample->inputCount;
         innerRequest.inputs = currentSample->inputs;
-        innerRequest.outputBufferSize = network->layers[network->layerCount - 1]->neuronCount;
-        float outputBuffer[innerRequest.outputBufferSize];
-        innerRequest.output = outputBuffer;
         
         NeuralNetwork_propagate(network, &innerRequest);
     
@@ -311,23 +338,8 @@ void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequ
         return;
     }
 
-    // Get largest number of neurons in layer for intermediate output buffer
-    int maxNeurons = -1;
-    
-    for (int layer = 0; layer < network->layerCount; ++layer) {
-        if (network->layers[layer]->neuronCount > maxNeurons) maxNeurons = network->layers[layer]->neuronCount;
-    }
-
-    float intermediateInputBuffer[maxNeurons];
-    float intermediateOutputBuffer[maxNeurons];
-
-    float *interInput = intermediateInputBuffer;
-    float *interOutput = intermediateOutputBuffer;
-
-    // Preload the intermediate buffer with the provided input
-    for (int inputFeature = 0; inputFeature < request->inputCount; ++inputFeature) {
-        intermediateInputBuffer[inputFeature] = request->inputs[inputFeature];
-    }
+    // load first intermediate buffers
+    memcpy(network->activatedBuffers[0], request->inputs, sizeof(*network->activatedBuffers[0]) * network->layers[0]->neuronCount);
 
     // Propogate through the network
     for (int layer = 1; layer < network->layerCount; ++layer) {
@@ -335,26 +347,18 @@ void NeuralNetwork_propagate(NeuralNetwork* network, NeuralNetwork_PropagateRequ
             const int start = network->layers[layer]->weightsPerNeuron * neuron;
             const int end = network->layers[layer]->weightsPerNeuron * (neuron + 1);
             
-            float innerProduct = network->layers[layer]->biases[neuron];
+            network->unactivatedBuffers[layer][neuron] = network->layers[layer]->biases[neuron];
 
             for (int innerProductIterator = start; innerProductIterator < end; ++innerProductIterator) {
-                innerProduct += network->layers[layer]->weights[innerProductIterator] * interInput[innerProductIterator - start];
+                network->unactivatedBuffers[layer][neuron] += network->layers[layer]->weights[innerProductIterator] * network->activatedBuffers[layer - 1][innerProductIterator - start];
             }
 
-            interOutput[neuron] = innerProduct;
+            applyActivationFunction(network->unactivatedBuffers[layer], network->activatedBuffers[layer], network->layers[layer]->neuronCount, network->layers[layer]->outputActivationFunction);
         }
-
-        applyActivationFunction(interOutput, network->layers[layer]->neuronCount, network->layers[layer]->outputActivationFunction);
-
-        float *temp = interInput;
-        interInput = interOutput;
-        interOutput = temp;
     }
 
     // Write output to output buffer
-    for (int outputFeature = 0; outputFeature < network->layers[network->layerCount - 1]->neuronCount; ++outputFeature) {
-        request->output[outputFeature] = intermediateInputBuffer[outputFeature];
-    }
+    memcpy(request->output, network->activatedBuffers[network->layerCount - 1], sizeof(*request->output) * network->layers[network->layerCount - 1]->neuronCount);
 }
 
 void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* request) {
@@ -404,6 +408,11 @@ void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
 
         network->layers[layer] = currentLayer;
     }
+
+    for (int layer = 0; layer < network->layerCount; ++layer) {
+        network->activatedBuffers[layer] = malloc(sizeof(*network->activatedBuffers[layer]) * network->layers[layer]->neuronCount);
+        network->unactivatedBuffers[layer] = malloc(sizeof(*network->unactivatedBuffers[layer]) * network->layers[layer]->neuronCount);
+    }
 }
 
 void NeuralNetwork_print(NeuralNetwork* network) {
@@ -429,67 +438,65 @@ void NeuralNetwork_print(NeuralNetwork* network) {
     }
 }
 
-void NeuralNetwork_ReLU(float* input, int N) {
+void NeuralNetwork_ReLU(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
-        input[i] = (input[i] < 0.0f) ? 0.0f : input[i];
+        output[i] = (input[i] < 0.0f) ? 0.0f : input[i];
     }
 }
 
-void NeuralNetwork_Linear(float* input, int N) {
-    // Some of my best work.
-    return;
+void NeuralNetwork_Linear(float* input, float* output, int N) {
+    memcpy(output, input, N);
 }
 
-void NeuralNetwork_Sigmoid(float* input, int N) {
+void NeuralNetwork_Sigmoid(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
-        input[i] = 1.0f / (1.0f + expf(-input[i]));
+        output[i] = 1.0f / (1.0f + expf(-input[i]));
     }
 }
 
-void NeuralNetwork_SoftMax(float* vector, int N) {
+void NeuralNetwork_SoftMax(float* input, float* output, int N) {
     float sum = 0.0f;
 
     for (int i = 0; i < N; ++i) {
-        vector[i] = expf(vector[i]);
-        sum += vector[i];
+        output[i] = expf(input[i]);
+        sum += output[i];
     }
 
     for (int i = 0; i < N; ++i) {
-        vector[i] /= sum;
-    }
-}
-
-void NeuralNetwork_ReLUDerrivative(float* input, int N) {
-    for (int i = 0; i < N; ++i) {
-        if (input[i] < 0) input[i] = 0;
-        else input[i] = 1.0f;
+        output[i] /= sum;
     }
 }
 
-void NeuralNetwork_LinearDerrivative(float* input, int N) {
+void NeuralNetwork_ReLUDerrivative(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
-        input[i] = 1.0f;
+        if (input[i] < 0) output[i] = 0;
+        else output[i] = 1.0f;
     }
 }
 
-void NeuralNetwork_SigmoidDerrivative(float* input, int N) {
+void NeuralNetwork_LinearDerrivative(float* input, float* output, int N) {
     for (int i = 0; i < N; ++i) {
-        float inputCopy = input[i];
-        NeuralNetwork_Sigmoid(&inputCopy, 1);
+        output[i] = 1.0f;
+    }
+}
+
+void NeuralNetwork_SigmoidDerrivative(float* input, float* output, int N) {
+    for (int i = 0; i < N; ++i) {
+        NeuralNetwork_Sigmoid(input, output, N);
     
-        input[i] = inputCopy * (1 - inputCopy);
+        output[i] = output[i] * (1 - output[i]);
     }
 }
 
-void NeuralNetwork_SoftMaxDerrivative(float* vector, int N) {
+void NeuralNetwork_SoftMaxDerrivative(float* input, float* output, int N) {
     float sum = 0.0f;
 
     for (int i = 0; i < N; ++i) {
-        vector[i] = expf(vector[i]);
-        sum += vector[i];
+        output[i] = expf(input[i]);
+        sum += output[i];
     }
 
     for (int i = 0; i < N; ++i) {
-        vector[i] /= sum;
+        output[i] /= sum;
     }
 }

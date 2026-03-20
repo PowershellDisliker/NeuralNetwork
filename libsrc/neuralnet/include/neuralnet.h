@@ -7,6 +7,7 @@ enum NeuralNetwork_Errors {
     NN_INVALID_ARGUMENT,
     NN_IO_ERROR,
     NN_ALLOCATION_ERROR,
+    NN_OVERFLOW_ERROR
 };
 
 enum NeuralNetwork_ActivationFunctions {
@@ -28,6 +29,8 @@ typedef struct {
 typedef struct {
     int layerCount;
     NeuronLayer** layers;
+    float** unactivatedBuffers;
+    float** activatedBuffers;
 } NeuralNetwork;
 
 typedef struct {
@@ -87,12 +90,12 @@ void NeuralNetwork_save(NeuralNetwork* network, NeuralNetwork_FileRequest* reque
 void NeuralNetwork_load(NeuralNetwork* network, NeuralNetwork_FileRequest* request);
 void NeuralNetwork_print(NeuralNetwork* network);
 
-void NeuralNetwork_ReLU(float* input, int N);
-void NeuralNetwork_Sigmoid(float* input, int N);
-void NeuralNetwork_Linear(float* input, int N);
-void NeuralNetwork_SoftMax(float* vector, int N);
+void NeuralNetwork_ReLU(float* input, float* output, int N);
+void NeuralNetwork_Sigmoid(float* input, float* output, int N);
+void NeuralNetwork_Linear(float* input, float* output, int N);
+void NeuralNetwork_SoftMax(float* vector, float* output, int N);
 
-void NeuralNetwork_ReLUDerrivative(float* input, int N);
-void NeuralNetwork_SigmoidDerrivative(float* input, int N);
-void NeuralNetwork_LinearDerrivative(float* input, int N);
-void NeuralNetwork_SoftMaxDerrivative(float* vector, int N);
+void NeuralNetwork_ReLUDerrivative(float* input, float* output, int N);
+void NeuralNetwork_SigmoidDerrivative(float* input, float* output, int N);
+void NeuralNetwork_LinearDerrivative(float* input, float* output, int N);
+void NeuralNetwork_SoftMaxDerrivative(float* vector, float* output, int N);
